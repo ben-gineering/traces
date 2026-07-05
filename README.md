@@ -70,13 +70,13 @@ python3 art2kicad/art2kicad.py artworks/aa78.jpg \
 Produces, in `outputs/aa78/`:
 
 - `aa78.kicad_pro` / `aa78.kicad_sch` / `aa78.kicad_pcb` — the KiCad project
-- `aa78-appearance.png` — synthetic "how the finished board looks" render
+- `aa78-render3d.png` — real 3D render of the finished board via `kicad-cli pcb render`
 - `aa78-preview.pdf` — `kicad-cli` layer plot
 - `gerbers/` — `F_Cu`, `F_Mask`, `F_SilkS`, `Edge_Cuts` + job file
 
 ### Tuning a new image
 
-1. Run once with `--render` (fast, no KiCad) and inspect `*-appearance.png`.
+1. Run once with `--render-3d` and inspect `*-render3d.png`.
 2. Too much/little copper → adjust `--t1` (or `--p1`). Too much/little exposed
    FR4 → adjust `--t2` (or `--p2`). Use `--invert` for negatives.
 3. Too busy → raise `--opttolerance` and `--min-feature-mm`.

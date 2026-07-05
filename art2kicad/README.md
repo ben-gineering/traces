@@ -74,7 +74,7 @@ python3 art2kicad.py <image.{jpg,png}> -o <out-dir> -n <project-name> \
 Outputs (in `<out-dir>/<name>/`):
 
 * `<name>.kicad_pro`, `<name>.kicad_sch`, `<name>.kicad_pcb` — the project
-* `<name>-appearance.png` — synthetic "how the finished board looks" render
+* `<name>-render3d.png` — real 3D render via `kicad-cli pcb render` (`--render-3d`)
 * `<name>-preview.pdf` — `kicad-cli` layer plot (`--pdf`)
 * `gerbers/` — `F_Cu`, `F_Mask`, `F_SilkS`, `Edge_Cuts` + job file (`--gerber`)
 
@@ -97,7 +97,10 @@ Outputs (in `<out-dir>/<name>/`):
 | `--opttolerance` | 0.6 | potrace simplification (higher = fewer nodes) |
 | `--max-px` | 800 | downsample longest side before processing (speed) |
 | `--mask-color`/`--copper-color`/`--fr4-color`/`--silk-color` | black/#b87333/#d9c89a/white | render colors only |
-| `--keep-masks` | off | keep intermediate `*.png`/`*.pgm` masks |
+| `--render-3d` | off | render a real 3D view of the PCB via `kicad-cli pcb render` |
+| `--render-3d-size` | 800 | 3D render image size in px (higher may fail headless) |
+| `--render-3d-side` | top | 3D camera side: top/bottom/left/right/front/back |
+| `--render-3d-rotate` | *(none)* | 3D board rotation, e.g. `-45,0,45` for isometric |
 
 ### Tuning a new image
 

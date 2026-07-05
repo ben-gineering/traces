@@ -588,6 +588,61 @@ def write_project(out_dir: Path, name: str, pcb_text: str, title: str, date: str
     (out_dir / f"{name}.kicad_pro").write_text(pro)
 
 
+def render_3d(out_dir: Path, name: str, width: int = 800, height: int = 800,
+               side: str = "top", background: str = "opaque",
+               quality: str = "basic", rotate: str | None = None) -> Path | None:
+    """
+    Render the PCB in 3D using kicad-cli pcb render.
+    Returns the output PNG path, or None on failure.
+
+    Note: requires a working OpenGL/EGL context. On headless systems this needs
+    EGL_PLATFORM=surfaceless and LIBGL_ALWAYS_SOFTWARE=1, which we set here.
+    If the requested size fails (GPU memory), falls back to smaller sizes.
+    """
+    pcb = out_dir / f"{name}.kicad_pcb"
+    out_png = out_dir / f"{name}-render3d.png"
+
+    env = os.environ.copy()
+    # Headless OpenGL: use EGL surfaceless platform + software rendering.
+    # This is needed because kicad-cli's 3D renderer needs a GL context.
+    env["EGL_PLATFORM"] = "surfaceless"
+    env["LIBGL_ALWAYS_SOFTWARE"] = "1"
+
+    # Try the requested size, then fall back to smaller sizes if the render
+    # fails (complex boards can exhaust GPU memory in software rendering).
+    sizes = [(width, height)]
+    for s in [1024, 800, 600, 400]:
+        if s < width and (s, s) not in sizes:
+            sizes.append((s, s))
+
+    for w, h in sizes:
+        cmd = [
+            "kicad-cli", "pcb", "render",
+            "--quality", quality,
+            "--side", side,
+            "--background", background,
+            "--width", str(w), "--height", str(h),
+            "--output", str(out_png),
+        ]
+        if rotate:
+            cmd += ["--rotate", rotate]
+        cmd.append(str(pcb))
+
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=300)
+        except subprocess.TimeoutExpired:
+            print(f"  [warn] 3D render timed out at {w}x{h}", file=sys.stderr)
+            continue
+        if r.returncode == 0 and out_png.exists():
+            print(f"  wrote {out_png}  ({w}x{h})")
+            return out_png
+        # try next smaller size
+        print(f"  [info] 3D render failed at {w}x{h}, trying smaller...", file=sys.stderr)
+
+    print(f"  [warn] 3D render failed at all sizes", file=sys.stderr)
+    return None
+
+
 def run_export(out_dir: Path, name: str, want_pdf: bool, want_gerber: bool) -> None:
     pcb = out_dir / f"{name}.kicad_pcb"
     if want_pdf:
@@ -690,6 +745,14 @@ def main(argv=None) -> int:
     ap.add_argument("--gerber", action="store_true", help="run kicad-cli to export gerbers")
     ap.add_argument("--render", action="store_true",
                    help="render a synthetic board-appearance PNG (no KiCad needed)")
+    ap.add_argument("--render-3d", action="store_true",
+                   help="render a real 3D view of the PCB via kicad-cli pcb render")
+    ap.add_argument("--render-3d-size", type=int, default=800,
+                   help="3D render image dimensions in px (default 800; higher may fail headless)");
+    ap.add_argument("--render-3d-side", default="top",
+                   help="3D render camera side: top, bottom, left, right, front, back (default top)")
+    ap.add_argument("--render-3d-rotate", default=None,
+                   help="3D render board rotation, e.g. '-45,0,45' for isometric")
     ap.add_argument("--keep-masks", action="store_true", help="keep intermediate PNG/PGM masks")
 
     args = ap.parse_args(argv)
@@ -854,6 +917,12 @@ def main(argv=None) -> int:
             fr4_color=args.fr4_color, silk_color=args.silk_color,
             silk_mode=args.silk, silk_width_mm=args.silk_width, scale=scale)
         print(f"  wrote {render_png}")
+
+    # ---- optional 3D render ----
+    if args.render_3d:
+        render_3d(out_dir, name,
+                  width=args.render_3d_size, height=args.render_3d_size,
+                  side=args.render_3d_side, rotate=args.render_3d_rotate)
 
     # ---- optional export ----
     if args.pdf or args.gerber:
