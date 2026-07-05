@@ -140,7 +140,7 @@ corner block. It is your responsibility to:
 art2kicad/
   art2kicad.py     # the tool (single file)
   README.md        # this file
-build/
+outputs/
   <name>/
     <name>.kicad_pro / .kicad_sch / .kicad_pcb
     <name>-appearance.png   <name>-comparison.png

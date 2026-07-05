@@ -13,10 +13,8 @@ is essentially clean (only art-feature advisories).
 ```
 traces/
 ├── art2kicad/        the generator (single-file Python tool + its own README)
-├── testdata/         sample CC-BY-SA images (Zdzisław Beksiński)
-├── examples/         (reserved for example configs / sample boards)
-├── outputs/          generated projects (gitignored)
-├── tools/            (reserved for auxiliary scripts)
+├── artworks/         input images (famous public-domain + CC-BY-SA paintings)
+├── outputs/          generated KiCad projects (gitignored)
 ├── README.md         this file
 └── .gitignore
 ```
@@ -61,7 +59,7 @@ kicad-cli --version      # 10.0+ (optional, for --pdf / --gerber)
 ### Quick start
 
 ```bash
-python3 art2kicad/art2kicad.py testdata/AA78_by_Zdzislaw_Beksinski_1978.jpg \
+python3 art2kicad/art2kicad.py artworks/aa78.jpg \
     -o outputs -n aa78 \
     --title "AA78" --artist "Zdzisław Beksiński (1978)" \
     --license "CC BY-SA 3.0" \
@@ -108,7 +106,7 @@ corner block. It is your responsibility to:
   *derivative* design files you publish,
 - avoid NC-licensed images if you intend to sell boards.
 
-The sample images in `testdata/` are © Zdzisław Beksiński, licensed
+The sample images in `artworks/` are © Zdzisław Beksiński, licensed
 [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/) via
 [Muzeum Historyczne w Sanoku](https://commons.wikimedia.org/wiki/Category:Paintings_by_Zdzisław_Beksiński_in_Muzeum_Historyczne_w_Sanoku),
 sourced from Wikimedia Commons.
