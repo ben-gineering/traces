@@ -1,0 +1,37 @@
+# generated KiCad projects & build artifacts
+outputs/
+build/
+out/
+
+# synthetic renders & intermediate masks
+*-appearance.png
+*-comparison.png
+*-preview.pdf
+*.pgm
+*.pbm
+*.pbm.gz
+gerbers/
+
+# KiCad backups & lockfiles
+*-backups/
+*.bak
+*.kicad_pcb-bak
+*.sch-bak
+*.lck
+*.kicad_prl.bak
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.env
+
+# editor / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*~
