@@ -84,15 +84,16 @@ def bridge_hole(outer: list[Pt], hole: list[Pt]) -> list[Pt]:
     """
     Merge a hole into an outer ring using a zero-width "keyhole" bridge.
     Returns a single simple polygon (list of (x,y)).
+    Uses numpy for the closest-pair search (O(n*m) but vectorized).
     """
-    # find closest pair of vertices between outer and hole
-    best = (math.inf, 0, 0)
-    for i, p in enumerate(outer):
-        for j, q in enumerate(hole):
-            d = dist2(p, q)
-            if d < best[0]:
-                best = (d, i, j)
-    _, i, j = best
+    oa = np.asarray(outer, dtype=np.float64)
+    ha = np.asarray(hole, dtype=np.float64)
+    # pairwise squared distances: shape (n_outer, n_hole)
+    diff = oa[:, None, :] - ha[None, :, :]
+    d2 = (diff ** 2).sum(axis=2)
+    flat_idx = int(np.argmin(d2))
+    n_hole = d2.shape[1]
+    i, j = divmod(flat_idx, n_hole)
     # path: outer[0..i] + hole[j..] + hole[0..j] + outer[i..]
     return (
         outer[: i + 1]
@@ -152,6 +153,48 @@ def clean_mask(im_bw: Image.Image, close_px: int, open_px: int) -> Image.Image:
         im_bw = im_bw.filter(ImageFilter.MinFilter(k))
         im_bw = im_bw.filter(ImageFilter.MaxFilter(k))
     return im_bw
+
+
+def silk_edges_mask(
+    gray: Image.Image,
+    blur_sigma: float,
+    edge_pct: float,
+    ribbon_px: int,
+) -> Image.Image:
+    """
+    Generate a binary mask of Sobel edge ribbons from the grayscale image.
+    Used for the 'edges' silkscreen mode: silk follows the actual structural
+    lines of the image (wrinkles, contours, folds) rather than just band
+    boundaries.
+
+    Parameters:
+        blur_sigma  Gaussian blur applied before edge detection (suppresses speckle)
+        edge_pct    percentile threshold (0-100); keep edges whose magnitude is
+                    above this percentile (higher = fewer/sparser edges)
+        ribbon_px   dilate edges to this width in pixels (manufacturable width)
+    """
+    arr = np.asarray(gray, dtype=np.float32)
+    # Gaussian blur to suppress speckle, keep structural lines
+    if blur_sigma > 0:
+        img = Image.fromarray(arr.astype(np.uint8))
+        img = img.filter(ImageFilter.GaussianBlur(radius=blur_sigma))
+        arr = np.asarray(img, dtype=np.float32)
+    # Sobel via numpy array slicing (no scipy dependency)
+    a = np.pad(arr, 1, mode="edge")
+    gx = (a[:-2, 2:] + 2 * a[1:-1, 2:] + a[2:, 2:]) - \
+         (a[:-2, :-2] + 2 * a[1:-1, :-2] + a[2:, :-2])
+    gy = (a[2:, :-2] + 2 * a[2:, 1:-1] + a[2:, 2:]) - \
+         (a[:-2, :-2] + 2 * a[:-2, 1:-1] + a[:-2, 2:])
+    mag = np.sqrt(gx ** 2 + gy ** 2)
+    thr = np.percentile(mag, edge_pct)
+    m = (mag > thr).astype(np.uint8) * 255
+    # dilate to target ribbon width (ensures manufacturable line width)
+    if ribbon_px > 1:
+        k = ribbon_px if ribbon_px % 2 == 1 else ribbon_px + 1
+        m_img = Image.fromarray(m)
+        m_img = m_img.filter(ImageFilter.MaxFilter(k))
+        m = np.asarray(m_img, dtype=np.uint8)
+    return Image.fromarray(m)
 
 
 def make_band_masks(
@@ -451,8 +494,14 @@ def render_appearance(
     # paint copper where copper opening (overrides fr4 in overlap, though bands are disjoint)
     canvas = Image.composite(canvas, cu_rgb, Image.fromarray(cu_arr.astype(np.uint8) * 255))
 
-    # silkscreen outlines: rasterize the lit/contour mask boundary as thin white lines
-    if silk_mode in ("outline", "contour"):
+    # silkscreen: render edges or outline/contour modes
+    if silk_mode == "edges":
+        # Sobel edge mask is already a raster bitmap; composite directly
+        edge_img = masks.get("silk_edges")
+        if edge_img is not None:
+            silk_rgb = Image.new("RGB", (iw, ih), silk_color)
+            canvas = Image.composite(canvas, silk_rgb, edge_img)
+    elif silk_mode in ("outline", "contour"):
         key = "lit" if silk_mode == "outline" else None
         if silk_mode == "contour":
             # union boundary of copper and fr4 = boundary of lit too
@@ -601,11 +650,20 @@ def main(argv=None) -> int:
                    help="invert the luminance before splitting")
 
     # silk
-    ap.add_argument("--silk", choices=["none", "outline", "contour"], default="outline",
-                   help="silkscreen source: outline=stroked outlines of lit regions, "
-                        "contour=stroked outlines of each band, none (default outline)")
+    ap.add_argument("--silk", choices=["none", "outline", "contour", "edges"], default="edges",
+                   help="silkscreen source: edges=Sobel edge ribbons of the image (default), "
+                        "outline=stroked outlines of lit regions, "
+                        "contour=stroked outlines of each band, none")
     ap.add_argument("--silk-width", type=float, default=0.15,
-                   help="silkscreen outline stroke width in mm (default 0.15)")
+                   help="silkscreen stroke/ribbon width in mm (default 0.15)")
+    ap.add_argument("--silk-edge-blur", type=float, default=1.5,
+                   help="edges mode: Gaussian blur sigma before Sobel (default 1.5)")
+    ap.add_argument("--silk-edge-pct", type=float, default=90.0,
+                   help="edges mode: edge magnitude percentile threshold 0-100; "
+                        "keep edges above this percentile (default 90, higher=fewer edges)")
+    ap.add_argument("--silk-edge-turd", type=int, default=20,
+                   help="edges mode: potrace turdsize for silk (breaks up connected "
+                        "edge networks; default 20, higher=fewer/simpler polygons)")
     ap.add_argument("--silk-color", default="white", help="(render only) silkscreen color")
     ap.add_argument("--mask-color", default="black", help="(render only) solder mask color")
     ap.add_argument("--copper-color", default="#b87333", help="(render only) exposed copper color")
@@ -685,6 +743,11 @@ def main(argv=None) -> int:
 
     # ---- make masks ----
     masks = make_band_masks(gray, t_lo, t_hi, args.close_px, args.open_px)
+    # generate silk edge mask (derived from the original grayscale, not the bands)
+    if args.silk == "edges":
+        ribbon_px = max(2, int(round(args.silk_width / scale)))
+        masks["silk_edges"] = silk_edges_mask(
+            gray, args.silk_edge_blur, args.silk_edge_pct, ribbon_px)
     if args.keep_masks:
         (out_dir).mkdir(parents=True, exist_ok=True)
 
@@ -698,22 +761,26 @@ def main(argv=None) -> int:
 
     graphics: list[str] = []
 
-    def vectorize(mask_key: str) -> tuple[list[GeoPolygon], Path | None]:
+    def vectorize(mask_key: str, turd_override: int | None = None) -> tuple[list[GeoPolygon], Path | None]:
         bw = masks[mask_key]
         if args.keep_masks:
             (out_dir / f"{mask_key}.png").save(bw.convert("L"))
         pgm = out_dir / f"{mask_key}.pgm" if args.keep_masks else Path(tempfile.mkstemp(suffix=".pgm")[1])
         # potrace traces BLACK (0) pixels, so invert: band becomes black, background white.
         ImageOps.invert(bw.convert("L")).save(pgm)
-        polys = potrace_geojson(pgm, turd, args.opttolerance, args.alphamax)
+        t = turd_override if turd_override is not None else turd
+        polys = potrace_geojson(pgm, t, args.opttolerance, args.alphamax)
         if not args.keep_masks:
             pgm.unlink(missing_ok=True)
         return polys, (pgm if args.keep_masks else None)
 
-    def emit_filled(mask_key: str, kicad_layers: list[str], label: str) -> int:
-        polys, _ = vectorize(mask_key)
+    def emit_filled(mask_key: str, kicad_layers: list[str], label: str,
+                    turd_override: int | None = None, max_holes: int = 999) -> int:
+        polys, _ = vectorize(mask_key, turd_override)
         count = 0
         for idx, gp in enumerate(polys):
+            if len(gp.holes) > max_holes:
+                continue
             merged = transform_ring(merge_holes(gp.outer, gp.holes), scale, ih, eo, eo)
             if len(merged) < 3:
                 continue
@@ -722,7 +789,9 @@ def main(argv=None) -> int:
                     merged, layer,
                     deterministic_uuid(f"{name}-{label}-{layer}-{idx}")))
             count += 1
-        print(f"  {label:7s} -> {count} polygon(s) on {','.join(kicad_layers)}")
+        skipped = len(polys) - count
+        extra = f", skipped {skipped} mega-polys" if skipped else ""
+        print(f"  {label:7s} -> {count} polygon(s) on {','.join(kicad_layers)}{extra}")
         return count
 
     def emit_outline(mask_key: str, layer: str, width_mm: float, label: str) -> int:
@@ -744,8 +813,13 @@ def main(argv=None) -> int:
     emit_filled("copper", ["F.Cu", "F.Mask"], "copper")
     # exposed FR4: mask opening only (no copper underneath)
     emit_filled("fr4", ["F.Mask"], "fr4")
-    # silkscreen: clean vector outlines of the lit (non-background) regions
-    if args.silk == "outline":
+    # silkscreen: Sobel edge ribbons from the source image (default),
+    # or clean vector outlines of the lit (non-background) regions.
+    if args.silk == "edges":
+        silk_turd = max(turd, args.silk_edge_turd)
+        emit_filled("silk_edges", ["F.SilkS"], "silk",
+                    turd_override=silk_turd, max_holes=50)
+    elif args.silk == "outline":
         emit_outline("lit", "F.SilkS", args.silk_width, "silk")
     elif args.silk == "contour":
         emit_outline("copper", "F.SilkS", args.silk_width, "silk-cu")

@@ -9,7 +9,7 @@ finishes — no ink, no components, no nets:
 | solder mask (background)  | *(covered area)*       | darkest band       |
 | bare copper / ENIG metal  | `F.Cu` + `F.Mask`      | mid band           |
 | exposed FR4 substrate     | `F.Mask` only          | lightest band      |
-| silkscreen ink            | `F.SilkS` (outlined)   | band boundary/edge |
+| silkscreen ink            | `F.SilkS` (edge ribbons) | image structural edges |
 
 The result is a real, fab-able board: gerbers plot cleanly and DRC is essentially
 clean (only art-feature width/spacing advisories).
@@ -24,15 +24,15 @@ image ──► grayscale + auto-level ──► 3 luminance bands
    │                            PIL morphology (close/open)
    │                                       │
    │                                       ▼
-   │                            potrace -b geojson  (vectorize, drop specks)
-   │                                       │
-   │                                       ▼
-   │              keyhole-bridge holes → single simple polygons
-   │                                       │
-   │                                       ▼
-   │              px→mm scale, Y-flip to KiCad up-axis
-   │                                       │
-   ▼                                       ▼
+   │         ┌─────────────────┐  potrace -b geojson  (vectorize, drop specks)
+   │         │ Sobel edge mask │       │
+   │         │ (for silk=edges)│       ▼
+   │         └────────┬────────┘  keyhole-bridge holes → single simple polygons
+   │                  │                       │
+   │                  ▼                       ▼
+   │           potrace -b geojson     px→mm scale, Y-flip to KiCad up-axis
+   │                  │                       │
+   ▼                  ▼                       ▼
   preview PNG  ◄── synthetic render    gr_poly on F.Cu / F.Mask / F.SilkS
                                         + Edge.Cuts outline
                                         + empty schematic
@@ -87,12 +87,15 @@ Outputs (in `<out-dir>/<name>/`):
 | `--t1` / `--t2` | *(auto)* | luminance thresholds 0–255 (dark→bg, mid→copper, light→fr4) |
 | `--p1` / `--p2` | 35 / 72 | percentiles for auto thresholds |
 | `--invert` | off | invert luminance first (use for negatives) |
-| `--silk` | `outline` | `none` / `outline` (lit-region outlines) / `contour` (per-band) |
-| `--silk-width` | 0.15 | silkscreen stroke width in mm |
+| `--silk` | `edges` | `none` / `edges` (Sobel edge ribbons, default) / `outline` (lit-region outlines) / `contour` (per-band) |
+| `--silk-width` | 0.15 | silkscreen stroke/ribbon width in mm |
+| `--silk-edge-blur` | 1.5 | edges mode: Gaussian blur σ before Sobel |
+| `--silk-edge-pct` | 90 | edges mode: keep edges above this magnitude percentile (higher=fewer edges) |
+| `--silk-edge-turd` | 20 | edges mode: potrace turdsize for silk (breaks up connected edge networks) |
 | `--min-feature-mm` | 0.25 | drives potrace turdsize (speck removal) |
 | `--close-px` / `--open-px` | 3 / 2 | morphological cleanup kernel (px) |
-| `--opttolerance` | 0.5 | potrace simplification (higher = fewer nodes) |
-| `--max-px` | 1000 | downsample longest side before processing (speed) |
+| `--opttolerance` | 0.6 | potrace simplification (higher = fewer nodes) |
+| `--max-px` | 800 | downsample longest side before processing (speed) |
 | `--mask-color`/`--copper-color`/`--fr4-color`/`--silk-color` | black/#b87333/#d9c89a/white | render colors only |
 | `--keep-masks` | off | keep intermediate `*.png`/`*.pgm` masks |
 
@@ -107,7 +110,9 @@ Each image wants its own thresholds. Workflow:
    percentiles.
 3. If the board is too busy, raise `--opttolerance` and `--min-feature-mm`.
 4. If fine highlights vanish, lower `--open-px` to 1 and raise `--p2`.
-5. Re-run with `--pdf --gerber` to produce fabrication output.
+5. If silk edges are too busy, raise `--silk-edge-pct` (e.g. 92–95) or `--silk-edge-turd`.
+6. If silk edges are too sparse, lower `--silk-edge-pct` (e.g. 85) or `--silk-edge-blur`.
+7. Re-run with `--pdf --gerber` to produce fabrication output.
 
 ## How the 4-tone mapping reads on a finished board
 
@@ -116,7 +121,7 @@ Recommended finish for art boards: **black solder mask + ENIG + white silk**.
 * black mask = the darkest tone (background)
 * gold ENIG on exposed copper = the mid tone (metal)
 * tan FR4 through mask openings = the lightest tone
-* white silk outlines = crisp detail/edges
+* white silk edge ribbons = crisp structural detail from the source image
 
 ## Licensing notes
 

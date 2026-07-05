@@ -32,7 +32,7 @@ See [`art2kicad/README.md`](art2kicad/README.md) for full documentation.
 | solder mask (background)  | *(covered area)*       | darkest band       |
 | bare copper / ENIG metal  | `F.Cu` + `F.Mask`      | mid band           |
 | exposed FR4 substrate     | `F.Mask` only          | lightest band      |
-| silkscreen ink            | `F.SilkS` (outlined)   | band boundary/edge |
+| silkscreen ink            | `F.SilkS` (edge ribbons) | image structural edges |
 
 ### Pipeline
 
@@ -82,8 +82,9 @@ Produces, in `outputs/aa78/`:
 2. Too much/little copper → adjust `--t1` (or `--p1`). Too much/little exposed
    FR4 → adjust `--t2` (or `--p2`). Use `--invert` for negatives.
 3. Too busy → raise `--opttolerance` and `--min-feature-mm`.
-4. Fine highlights vanishing → `--open-px 1`, raise `--p2`.
-5. Re-run with `--pdf --gerber` for fabrication output.
+4. Silk edges too busy → raise `--silk-edge-pct` (e.g. 92–95) or `--silk-edge-turd`.
+5. Fine highlights vanishing → `--open-px 1`, raise `--p2`.
+6. Re-run with `--pdf --gerber` for fabrication output.
 
 See [`art2kicad/README.md`](art2kicad/README.md) for the full option list.
 
