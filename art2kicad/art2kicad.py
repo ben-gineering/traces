@@ -324,16 +324,19 @@ def emit_gr_line(x1: float, y1: float, x2: float, y2: float, layer: str, width: 
     )
 
 
-def emit_gr_text(text: str, x: float, y: float, layer: str, size: float, uid: str, angle: float = 0) -> list[str]:
+def emit_gr_text(text: str, x: float, y: float, layer: str, size: float, uid: str, angle: float = 0, justify: str = "") -> list[str]:
     # KiCad stores multi-line text with the two-character escape sequence \n,
     # not a real newline. Escape backslashes and quotes, then encode newlines.
     esc = text.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
+    effects = f"(font (size {fmt(size)} {fmt(size)}) (thickness {fmt(size*0.15)}))"
+    if justify:
+        effects = f"{effects} (justify {justify})"
     return [
         f'\t(gr_text "{esc}"',
         f'\t\t(at {fmt(x)} {fmt(y)} {fmt(angle) if angle else 0})',
         f'\t\t(layer "{layer}")',
         f'\t\t(uuid "{uid}")',
-        f'\t\t(effects (font (size {fmt(size)} {fmt(size)}) (thickness {fmt(size*0.15)})))',
+        f'\t\t(effects {effects})',
         "\t)",
     ]
 
@@ -890,16 +893,23 @@ def main(argv=None) -> int:
     # silk == none: nothing
 
     # optional attribution silkscreen text in the corner
-    if args.license or args.artist:
+    if args.artist or args.title:
         txt_lines = []
         if args.title: txt_lines.append(args.title)
         if args.artist: txt_lines.append(args.artist)
-        if args.license: txt_lines.append(args.license)
         txt = "\n".join(txt_lines)
         sz = max(1.0, board_h * 0.012)
         graphics.extend(emit_gr_text(
-            txt, board_w - 2, board_h - 2 - sz, "F.SilkS", sz,
-            deterministic_uuid(f"{name}-attr")))
+            txt, board_w - 2, board_h - 2, "F.SilkS", sz,
+            deterministic_uuid(f"{name}-attr"),
+            justify="right bottom"))
+
+    # URL silkscreen text in the bottom-left corner
+    sz_url = max(1.0, board_h * 0.012)
+    graphics.extend(emit_gr_text(
+        "benjamingeiger.net", 2, board_h - 2, "F.SilkS", sz_url,
+        deterministic_uuid(f"{name}-url"),
+        justify="left bottom"))
 
     # ---- build & write project ----
     pcb_text = build_pcb(name, args.title or name, date, args.license, args.source,
